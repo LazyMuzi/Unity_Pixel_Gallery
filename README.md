@@ -1,1 +1,1 @@
-# Unity_Pixel_Art_Gallery
+# Unity_Pixel_Gallery
