@@ -1,0 +1,1 @@
+{"name": "PixelGallery.Tests", "references": ["PixelGallery.Core", "PixelGallery.UI"], "includePlatforms": ["Editor"], "optionalUnityReferences": ["TestAssemblies"]}

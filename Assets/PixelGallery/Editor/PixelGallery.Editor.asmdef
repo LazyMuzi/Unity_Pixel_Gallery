@@ -1,0 +1,1 @@
+{"name": "PixelGallery.Editor", "references": ["PixelGallery.Core", "PixelGallery.UI", "Unity.TextMeshPro", "Unity.RenderPipelines.Universal.Runtime", "Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.2D.Runtime"], "includePlatforms": ["Editor"]}
