@@ -16,6 +16,13 @@ namespace PixelGallery
         TMPro.TMP_Text growthStatus;
         bool enteringDrawing;
         Vector2 lastCanvasSize;
+        GameObject rewardNotice;
+        CanvasGroup rewardFade;
+        TMPro.TMP_Text rewardCoins;
+        float rewardTime;
+        int rewardFrom, rewardTo, displayedRewardCoins;
+        float galleryIncomeTime;
+        int lastGalleryIncome;
         public bool IsDrawingStage => atelier.activeSelf;
 
         void BuildStudioUI()
@@ -24,6 +31,12 @@ namespace PixelGallery
             backdrop.gameObject.AddComponent<RawImage>().texture = room.View; backdrop.GetComponent<RawImage>().raycastTarget = false;
             studioBackdrop = backdrop.gameObject;
             var hub = Panel("StudioHub",safeRoot,Color.clear); Stretch(hub); studioHub = hub.gameObject;
+            var notice = Panel("SettlementNotice",hub,new Color32(43,43,36,245));
+            notice.anchorMin = notice.anchorMax = new Vector2(.5f,.75f); notice.sizeDelta = new Vector2(1000,220);
+            rewardNotice = notice.gameObject; rewardFade = rewardNotice.AddComponent<CanvasGroup>(); rewardFade.blocksRaycasts = false;
+            rewardCoins = ResultLabel(notice,"",38,.68f,75,940);
+            ResultLabel(notice,"",28,.27f,90,940).name = "RewardDetail";
+            rewardNotice.SetActive(false);
             var heading = Label(hub,"나의 작업실",64,.94f,110); heading.color = new Color32(255,237,206,255);
             heading.rectTransform.sizeDelta = new Vector2(440,110); heading.rectTransform.anchoredPosition = new Vector2(-720,0);
             growthStatus = Label(hub,"",34,.2f,120); growthStatus.color = Color.white;
@@ -50,9 +63,18 @@ namespace PixelGallery
             var dim = Panel("ConfirmDrawingDim",atelier.transform,new Color(0,0,0,.72f)); Stretch(dim); dim.SetAsFirstSibling();
             foreach (var text in atelier.GetComponentsInChildren<TMPro.TMP_Text>())
                 if (text.transform.parent == atelier.transform) text.color = new Color32(255,244,221,255);
-            Button(atelier.transform,"작업실로",.945f,220,80,-790,ExitDrawing);
+            var back = Button(atelier.transform,"작업실로",.945f,200,80,0,ExitDrawing);
+            var backRect = (RectTransform)back.transform; backRect.anchorMin = backRect.anchorMax = new Vector2(0,.945f);
+            backRect.anchoredPosition = new Vector2(130,0); StyleDrawingButton(back);
             surface.Stroked = room.PaintGesture; room.ShowStudio(surface.Texture,uiCanvas.pixelRect.width/uiCanvas.pixelRect.height);
             atelier.SetActive(false);
+        }
+        void ShowSettlementReward(int previousCoins, bool expanded, bool sold)
+        {
+            rewardFrom = previousCoins; rewardTo = session.Data.Coins; displayedRewardCoins = -1; rewardTime = 0;
+            var detail = rewardNotice.transform.Find("RewardDetail").GetComponent<TMPro.TMP_Text>();
+            detail.text = (sold ? "판매 완료" : "컬렉션에 보관했어요")+(expanded ? "\n미술관 확장! 다음 전시부터 작품 가치 +20%" : "\n새로운 그림을 기다리고 있어요");
+            rewardFade.alpha = 1; rewardNotice.SetActive(true); rewardNotice.transform.SetAsLastSibling();
         }
         void OpenRegularRequest()
         {
@@ -74,6 +96,7 @@ namespace PixelGallery
         public void EnterDrawing()
         {
             if (session == null || session.Data.Pending != null || enteringDrawing || atelier.activeSelf) return;
+            rewardNotice.SetActive(false);
             surface.Zoom(.25f);
             ((RectTransform)surface.transform).anchoredPosition = Vector2.zero;
             atelier.SetActive(true); Canvas.ForceUpdateCanvases();
@@ -97,10 +120,26 @@ namespace PixelGallery
         }
         void ShowStudioHub()
         {
-            growthStatus.text = "캔버스를 눌러 그림을 시작하세요\n"+(session.Data.GalleryExpanded ? "미술관 확장 완료 · 이후 전시 작품 가치 +20%" : "미술관 확장까지 "+System.Math.Min(session.Data.Day-1,3)+" / 3회 전시 완료");
-            enteringDrawing = false; atelier.SetActive(false); studioHub.SetActive(true); studioBackdrop.SetActive(true);
+            UpdateStudioGrowth();
+            enteringDrawing = false; toolPanel.SetActive(false); palettePicker.SetActive(false); atelier.SetActive(false); studioHub.SetActive(true); studioBackdrop.SetActive(true);
             room.ShowStudio(surface.Texture,uiCanvas.pixelRect.width/uiCanvas.pixelRect.height);
             room.RefreshStudioArt(session.Data,palette);
+        }
+        void UpdateStudioGrowth()
+        {
+            growthStatus.text = "캔버스를 눌러 그림을 시작하세요\n"+(session.Data.GalleryExpanded ? "작품 가치 +20% · 관람 수입 "+session.GalleryIncome+"코인 / 20초 · 보유 "+session.Data.Coins+"코인" : "미술관 확장까지 "+System.Math.Min(session.Data.Day-1,3)+" / 3회 전시 완료");
+        }
+        void TickGalleryIncome()
+        {
+            if (session == null) return;
+            int income = session.GalleryIncome;
+            if (income != lastGalleryIncome) { galleryIncomeTime = 0; lastGalleryIncome = income; }
+            if (income == 0 || saveError.activeSelf || !Application.isFocused) return;
+            galleryIncomeTime += Time.deltaTime;
+            if (galleryIncomeTime < 20) return;
+            if (!TrySave(() => session.EarnGalleryIncome())) return;
+            galleryIncomeTime = 0; UpdateStudioGrowth();
+            if (shop.activeSelf) RefreshShop();
         }
         void BeginStudioPlacement()
         {
@@ -115,6 +154,20 @@ namespace PixelGallery
         }
         void TickStudio()
         {
+            TickGalleryIncome();
+            if (rewardNotice.activeSelf)
+            {
+                rewardTime += Time.unscaledDeltaTime;
+                int coins = Mathf.RoundToInt(Mathf.Lerp(rewardFrom,rewardTo,Mathf.Clamp01(rewardTime/.6f)));
+                if (coins != displayedRewardCoins)
+                {
+                    displayedRewardCoins = coins;
+                    rewardCoins.text = rewardTo == rewardFrom ? "작품을 소장했어요" : $"+{rewardTo-rewardFrom}코인 · 보유 {coins}코인";
+                }
+                rewardFade.alpha = Mathf.Clamp01((3-rewardTime)/.3f);
+                if (rewardTime >= 3) rewardNotice.SetActive(false);
+            }
+
             if (atelier.activeSelf && lastCanvasSize != uiCanvas.pixelRect.size)
             {
                 Canvas.ForceUpdateCanvases(); FitDrawingCamera(true);

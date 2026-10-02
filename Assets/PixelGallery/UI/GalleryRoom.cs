@@ -149,6 +149,8 @@ namespace PixelGallery
         }
         public void RefreshGalleryArt(SaveData data,Color32[] palette)
         {
+            for (int i=0;i<galleryArt.Length;i++)
+                transform.Find("ArtworkSpot"+i).GetComponent<Light>().intensity = (i == 2 ? 60 : 35)*(data.GalleryLighting ? 1.2f : 1);
             for (int i=0;i<3;i++)
             {
                 int slot = collectionSlots[i]; galleryArt[slot].mainTexture = galleryOriginal[slot]; galleryArt[slot].color = new Color(.76f,.76f,.76f);

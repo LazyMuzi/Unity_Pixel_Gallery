@@ -59,11 +59,11 @@ namespace PixelGallery.Tests
             Assert.That(game.Drawing.CanExhibit,Is.False);
             e.position = Point(rect,30,8); surface.OnPointerDown(e); surface.OnPointerUp(e);
             Assert.That(game.Drawing.CanExhibit,Is.True);
-            FindButton("완성하고 전시하기").onClick.Invoke();
+            FindButton("완료").onClick.Invoke();
             FindButton("돌아가기").onClick.Invoke();
             FindButton("되돌리기").onClick.Invoke(); Assert.That(game.Drawing.CanExhibit,Is.False);
             e.position = Point(rect,30,8); surface.OnPointerDown(e); surface.OnPointerUp(e);
-            FindButton("완성하고 전시하기").onClick.Invoke();
+            FindButton("완료").onClick.Invoke();
             FindButton("전시 시작").onClick.Invoke();
             Assert.That(game.LastJudgment.Visitors.Length, Is.EqualTo(10));
             Assert.That(game.Saved.Pending.Finished,Is.False);
@@ -89,6 +89,19 @@ namespace PixelGallery.Tests
             var resultField = typeof(GalleryPrototype).GetField("resultText",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);
             var resultText = (TMPro.TMP_Text)resultField.GetValue(game);
             Assert.That(resultText.text,Does.Contain("마음에 드는 감상 하나"));
+            Assert.That(resultText.gameObject.activeInHierarchy,Is.False);
+            var featured = (TMPro.TMP_Text[])typeof(GalleryPrototype).GetField("featuredComments",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(game);
+            Assert.That(featured.Length,Is.EqualTo(2));
+            Assert.That(featured[0].text,Is.Not.EqualTo(featured[1].text));
+            int contrasting = System.Array.FindIndex(game.LastJudgment.Visitors,v => !v.Liked);
+            if (contrasting >= 0) Assert.That(featured[1].text,Does.Contain(game.Saved.Pending.Comments[contrasting]));
+            foreach (var comment in featured) Assert.That(System.Array.Exists(fixedComments,c => comment.text.Contains(c)),Is.True);
+            FindButton("전체 감상 보기").onClick.Invoke();
+            Assert.That(resultText.gameObject.activeInHierarchy,Is.True);
+            foreach (var comment in fixedComments) Assert.That(resultText.text,Does.Contain(comment));
+            FindButton("감상 닫기").onClick.Invoke();
+            Assert.That(resultText.gameObject.activeInHierarchy,Is.False);
+
             Assert.That(resultText.text,Does.Not.Contain("확률").And.Not.Contain("신뢰도").And.Not.Contain("팬 보장"));
             var commentMethod = typeof(GalleryPrototype).GetMethod("Comment",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);
             var featureField = typeof(GalleryPrototype).GetField("analyzedFeatures",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);
@@ -250,7 +263,7 @@ namespace PixelGallery.Tests
             var dim = GameObject.Find("ConfirmDrawingDim").GetComponent<UnityEngine.UI.Image>();
             Assert.That(dim.color.a,Is.InRange(.65f,.8f));
             var surface = UnityEngine.Object.FindFirstObjectByType<DrawingSurface>();
-            Assert.That(((RectTransform)surface.transform.parent).anchoredPosition.x,Is.GreaterThan(0));
+            Assert.That(((RectTransform)surface.transform.parent).anchoredPosition.x,Is.Zero);
             Assert.That(room.transform.Find("Studio/Painter").localPosition.x,Is.LessThan(0));
             Assert.That(((RectTransform)surface.transform.parent).rect.size,Is.EqualTo(((RectTransform)surface.transform).rect.size));
             Assert.That(surface.transform.parent.GetComponent<UnityEngine.UI.Image>().color.a,Is.Zero);
@@ -285,6 +298,11 @@ namespace PixelGallery.Tests
         {
             yield return SceneManager.LoadSceneAsync("M0Prototype"); yield return EnterCanvas();
             var surface = UnityEngine.Object.FindFirstObjectByType<DrawingSurface>();
+            var testSettings = UnityEngine.InputSystem.InputSystem.settings;
+            var originalEditorInput = testSettings.editorInputBehaviorInPlayMode;
+            var originalBackground = testSettings.backgroundBehavior;
+            testSettings.editorInputBehaviorInPlayMode = UnityEngine.InputSystem.InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
+            testSettings.backgroundBehavior = UnityEngine.InputSystem.InputSettings.BackgroundBehavior.IgnoreFocus;
             var screen = UnityEngine.InputSystem.InputSystem.AddDevice<UnityEngine.InputSystem.Touchscreen>();
             try
             {
@@ -296,14 +314,21 @@ namespace PixelGallery.Tests
                 var e = new PointerEventData(EventSystem.current) { pointerId=91,button=PointerEventData.InputButton.Left,position=first };
                 surface.OnPointerDown(e);
                 Assert.That(surface.Drawing.Pixels[16*32+12],Is.Zero);
-                yield return null;
+                yield return new WaitForSeconds(.05f);
+                int pressed=0; foreach(var t in screen.touches) if(t.press.isPressed) pressed++;
+                Assert.That(pressed,Is.EqualTo(2),"Synthetic gesture must retain both contacts before moving");
                 UnityEngine.InputSystem.InputSystem.QueueStateEvent(screen,new UnityEngine.InputSystem.LowLevel.TouchState { touchId=91,phase=UnityEngine.InputSystem.TouchPhase.Moved,position=first-Vector2.right*80 });
                 UnityEngine.InputSystem.InputSystem.QueueStateEvent(screen,new UnityEngine.InputSystem.LowLevel.TouchState { touchId=92,phase=UnityEngine.InputSystem.TouchPhase.Moved,position=second+Vector2.right*80 });
-                UnityEngine.InputSystem.InputSystem.Update(); yield return null;
+                UnityEngine.InputSystem.InputSystem.Update(); yield return new WaitForSeconds(.05f);
                 Assert.That(rect.localScale.x,Is.GreaterThan(1));
                 FindButton("작업실로").onClick.Invoke();
             }
-            finally { UnityEngine.InputSystem.InputSystem.RemoveDevice(screen); }
+            finally
+            {
+                UnityEngine.InputSystem.InputSystem.RemoveDevice(screen);
+                testSettings.editorInputBehaviorInPlayMode = originalEditorInput;
+                testSettings.backgroundBehavior = originalBackground;
+            }
             yield return EnterCanvas();
             surface = UnityEngine.Object.FindFirstObjectByType<DrawingSurface>();
             var next = new PointerEventData(EventSystem.current) { pointerId=-1,button=PointerEventData.InputButton.Left,position=Point((RectTransform)surface.transform,16,16) };
@@ -349,6 +374,12 @@ namespace PixelGallery.Tests
             yield return SceneManager.LoadSceneAsync("M0Prototype"); yield return null; game=UnityEngine.Object.FindFirstObjectByType<GalleryPrototype>();
             Assert.That(game.Saved.Pending.CommissionReward,Is.EqualTo(60)); FindButton("보유하기").onClick.Invoke();
             Assert.That(game.Saved.Coins,Is.EqualTo(60)); Assert.That(game.Saved.CommissionCompleted,Is.True); Assert.That(game.Saved.Collection.Count,Is.EqualTo(2));
+            yield return new WaitForSecondsRealtime(.7f);
+            var reward = GameObject.Find("SettlementNotice"); Assert.That(reward,Is.Not.Null);
+            Assert.That(reward.GetComponent<CanvasGroup>().blocksRaycasts,Is.False);
+            Assert.That(reward.GetComponentsInChildren<TMPro.TMP_Text>()[0].text,Does.Contain("+60코인").And.Contain("보유 60코인"));
+            Assert.That(game.Saved.Coins,Is.EqualTo(60));
+
             FindButton("단골의 부탁").onClick.Invoke(); Assert.That(FindButton("부탁 완료").interactable,Is.False); FindButton("나중에").onClick.Invoke();
         }
         [UnityTest]
@@ -465,13 +496,60 @@ namespace PixelGallery.Tests
             game.Evaluate(); FindButton("전시 시작").onClick.Invoke();
             Assert.That(game.Saved.HasPending,Is.True);
         }
+        [UnityTest]
+        public IEnumerator BottomDockAndPopoversKeepCanvasInputSeparate()
+        {
+            yield return SceneManager.LoadSceneAsync("M0Prototype"); yield return EnterCanvas();
+            Canvas.ForceUpdateCanvases();
+            var game = UnityEngine.Object.FindFirstObjectByType<GalleryPrototype>();
+            var surface = UnityEngine.Object.FindFirstObjectByType<DrawingSurface>();
+            var dock = (RectTransform)GameObject.Find("DrawingDock").transform;
+            var viewport = (RectTransform)surface.transform.parent;
+            var dockCorners = new Vector3[4]; var canvasCorners = new Vector3[4];
+            dock.GetWorldCorners(dockCorners); viewport.GetWorldCorners(canvasCorners);
+            Assert.That(dockCorners[1].y,Is.LessThan(canvasCorners[0].y));
+            Assert.That(dock.GetComponentsInChildren<UnityEngine.UI.Button>().Length,Is.EqualTo(5));
+            Assert.That(viewport.rect.width,Is.EqualTo(viewport.rect.height));
+            Assert.That(viewport.rect.height,Is.GreaterThan(680));
+            foreach (Transform child in surface.transform) if(child.name == "Grid") Assert.That(child.gameObject.activeSelf,Is.False);
+            FindButton("도구").onClick.Invoke(); FindButton("큰 붓 선택").onClick.Invoke();
+            Assert.That(game.IsDrawingStage,Is.True); Assert.That(GameObject.Find("Shop"),Is.Null); Assert.That(surface.Tool,Is.Zero);
+            FindButton("도구").onClick.Invoke(); FindButton("격자 켜기 / 끄기").onClick.Invoke();
+            foreach (Transform child in surface.transform) if(child.name == "Grid") Assert.That(child.gameObject.activeSelf,Is.True);
+            FindButton("DismissTools").onClick.Invoke();
+            FindButton("팔레트").onClick.Invoke();
+            var wheel = UnityEngine.Object.FindFirstObjectByType<ColorWheelPicker>();
+            wheel.SetColor(new Color32(18,93,211,255));
+            Assert.That(game.Saved.DraftColors.Length,Is.Zero);
+            yield return null; Canvas.ForceUpdateCanvases();
+            var wheelCorners = new Vector3[4]; var applyCorners = new Vector3[4];
+            ((RectTransform)wheel.transform).GetWorldCorners(wheelCorners);
+            ((RectTransform)FindButton("이 색 사용하기").transform).GetWorldCorners(applyCorners);
+            Assert.That(wheelCorners[0].y,Is.GreaterThan(applyCorners[1].y));
+            var e = new PointerEventData(EventSystem.current) { pointerId=-1,button=PointerEventData.InputButton.Left,position=Point((RectTransform)surface.transform,16,16) };
+            var hits = new List<RaycastResult>(); EventSystem.current.RaycastAll(e,hits);
+            Assert.That(hits[0].gameObject.name,Is.EqualTo("DismissPalette"));
+            ExecuteEvents.Execute(hits[0].gameObject,e,ExecuteEvents.pointerClickHandler);
+            Assert.That(game.Drawing.Pixels[16*32+16],Is.Zero);
+            Assert.That(surface.SelectedColor,Is.EqualTo(33));
+            yield return null;
+            hits.Clear(); EventSystem.current.RaycastAll(e,hits);
+            Assert.That(hits[0].gameObject,Is.EqualTo(surface.gameObject));
+            surface.OnPointerDown(e); surface.OnPointerUp(e);
+            Assert.That(game.Drawing.Pixels[16*32+16],Is.EqualTo(33));
+            FindButton("되돌리기").onClick.Invoke(); Assert.That(game.Drawing.Pixels[16*32+16],Is.Zero);
+            FindButton("지우개").onClick.Invoke(); Assert.That(surface.Tool,Is.EqualTo(1));
+            FindButton("연필").onClick.Invoke(); Assert.That(surface.Tool,Is.Zero);
+        }
         static IEnumerator EnterCanvas()
         {
             var game = UnityEngine.Object.FindFirstObjectByType<GalleryPrototype>();
             if (game.IsDrawingStage) yield break;
             FindButton("캔버스").onClick.Invoke();
-            yield return new WaitForSeconds(GalleryRoom.FocusSeconds+.1f);
-            Assert.That(game.IsDrawingStage,Is.True);
+            float deadline = Time.realtimeSinceStartup+5;
+            while (!game.IsDrawingStage && Time.realtimeSinceStartup < deadline) yield return null;
+            Assert.That(game.IsDrawingStage,Is.True,"Canvas focus must finish before drawing input is tested");
+            yield return null; Canvas.ForceUpdateCanvases();
         }
         static Vector2 Point(RectTransform rect,int x,int y)
         {

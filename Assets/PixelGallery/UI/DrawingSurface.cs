@@ -88,7 +88,7 @@ namespace PixelGallery
             for (int i = 0; i < display.Length; i++)
             {
                 byte p = Drawing.Pixels[i];
-                display[i] = p == 0 ? (((i % PixelGallery.Drawing.Size + i / PixelGallery.Drawing.Size) % 2 == 0) ? new Color32(240, 235, 224, 255) : new Color32(228, 222, 209, 255)) : palette[p];
+                display[i] = p == 0 ? new Color32(248, 243, 232, 255) : palette[p];
             }
             texture.SetPixels32(display); texture.Apply(false); dirty = false;
         }

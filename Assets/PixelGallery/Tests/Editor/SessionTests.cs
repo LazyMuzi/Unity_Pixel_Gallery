@@ -19,6 +19,43 @@ namespace PixelGallery.Tests
                 Offer = Economy.Offer(judgment,price,"art",day), Judgment = judgment, Comments = new[] { "좋아요." } };
         }
         [Test]
+        public void LightingPurchasePersistsOnceAndDoublesIncomeWithoutChangingArtworkPrice()
+        {
+            bool fail = false;
+            Assert.That(new GallerySession(new SaveData { Coins=60 },_=>{}).BuyGalleryLighting(),Is.False);
+            var session = new GallerySession(new SaveData { Day=4,Coins=59 },_=>{});
+            Assert.That(session.BuyGalleryLighting(),Is.False);
+            session = new GallerySession(new SaveData { Day=4,Coins=60 },_=> { if (fail) throw new IOException("disk full"); });
+            session.Start(Art(),Show(4),true); session.Finish(); Assert.That(session.BuyGalleryLighting(),Is.False); session.Resolve(false);
+            session.PlaceInGallery("art",0); int price = session.Data.Collection[0].LastShow.Price;
+            fail=true; Assert.Throws<IOException>(()=>session.BuyGalleryLighting()); Assert.That(session.Data.Coins,Is.EqualTo(60)); Assert.That(session.Data.GalleryLighting,Is.False);
+            fail=false; Assert.That(session.BuyGalleryLighting(),Is.True); Assert.That(session.Data.Coins,Is.Zero); Assert.That(session.BuyGalleryLighting(),Is.False);
+            var loaded=JsonUtility.FromJson<SaveData>(JsonUtility.ToJson(session.Data)); loaded.Pending=null;
+            session=new GallerySession(loaded,_=>{}); Assert.That(session.GalleryIncome,Is.EqualTo(2)); session.EarnGalleryIncome();
+            Assert.That(session.Data.Coins,Is.EqualTo(2)); Assert.That(session.Data.Collection[0].LastShow.Price,Is.EqualTo(price));
+        }
+        [Test]
+        public void GalleryIncomeOnlyPaysDisplayedStoredArtworkAndSurvivesFailedSave()
+        {
+            bool fail = false;
+            var session = new GallerySession(new SaveData { Day=4 },_ => { if (fail) throw new IOException("disk full"); });
+            Assert.That(session.EarnGalleryIncome(),Is.False);
+            session.Start(Art(),Show(4),true); session.Finish(); session.Resolve(false);
+            Assert.That(session.GalleryIncome,Is.Zero);
+            session.PlaceInGallery("art",0); Assert.That(session.GalleryIncome,Is.EqualTo(1));
+            session.PlaceInGallery("art",2); Assert.That(session.GalleryIncome,Is.EqualTo(1));
+            var before = session.Data; fail = true;
+            Assert.Throws<IOException>(() => session.EarnGalleryIncome()); Assert.That(session.Data,Is.SameAs(before));
+            fail = false; session.EarnGalleryIncome(); Assert.That(session.Data.Coins,Is.EqualTo(1));
+            var loaded = JsonUtility.FromJson<SaveData>(JsonUtility.ToJson(session.Data)); loaded.Pending=null;
+            session = new GallerySession(loaded,_ => {}); Assert.That(session.Data.Coins,Is.EqualTo(1));
+            session.Start(session.Data.Collection[0],Show(5),false);
+            Assert.That(session.EarnGalleryIncome(),Is.False); session.Finish(); session.Resolve(false);
+            session.EarnGalleryIncome(); Assert.That(session.Data.Coins,Is.EqualTo(2));
+            int offer = session.Data.Collection[0].LastShow.Offer;
+            session.SellStored("art"); Assert.That(session.Data.Coins,Is.EqualTo(2+offer)); Assert.That(session.EarnGalleryIncome(),Is.False);
+        }
+        [Test]
         public void RegularRemembersArtworkAndCommissionPaysOnceEvenWhenKept()
         {
             bool fail = false;

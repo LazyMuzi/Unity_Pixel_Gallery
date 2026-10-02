@@ -50,7 +50,7 @@ namespace PixelGallery
         public int RegularVisits;
         public double[] RegularLastFeatures = new double[0];
         public string RegularLastArtworkId;
-        public bool CommissionAccepted, CommissionCompleted;
+        public bool CommissionAccepted, CommissionCompleted, GalleryLighting;
         public bool GalleryExpanded => Day >= 4;
         public SaveData Copy()
         {
@@ -66,6 +66,7 @@ namespace PixelGallery
         {
             if (Version != 2 || Coins < 0 || Day < 1 || Collection == null || Recent == null || Recent.Count > 10)
                 throw new InvalidDataException("Unsupported or damaged save.");
+            if (GalleryLighting && !GalleryExpanded) throw new InvalidDataException("Invalid gallery upgrade.");
             if (Colors == null || Colors.Count < 8 || Colors.Count > 32 || Tools < 0 || Tools > 7 || SeenNpcs == null || SeenNpcs.Count > 5)
                 throw new InvalidDataException("Invalid unlocks.");
             var colors = new HashSet<int>();
@@ -172,6 +173,27 @@ namespace PixelGallery
             if (Math.Abs(warmth) >= .15) return warmth > 0 ? "지난 그림보다 색이 따뜻해졌네요. 새 그림도 천천히 볼게요." : "지난 그림보다 차분하고 서늘한 색이네요. 다른 분위기도 반가워요.";
             if (Math.Abs(brightness) >= .15) return brightness > 0 ? "지난 그림보다 밝아졌네요. 작업실에 빛이 들어온 것 같아요." : "지난 그림보다 빛이 잔잔해졌네요. 천천히 들여다볼게요.";
             return "지난 그림의 분위기가 기억나요. 이번 그림에서도 작가님다운 색이 보이네요.";
+        }
+        public int GalleryIncome
+        {
+            get
+            {
+                if (!Data.GalleryExpanded) return 0;
+                int count = 0;
+                foreach (string id in Data.GalleryWallIds)
+                    if (!string.IsNullOrEmpty(id) && (Data.Pending == null || Data.Pending.ArtworkId != id)) count++;
+                return count*(Data.GalleryLighting ? 2 : 1);
+            }
+        }
+        public bool BuyGalleryLighting()
+        {
+            if (!Data.GalleryExpanded || Data.Pending != null || Data.GalleryLighting || Data.Coins < 60) return false;
+            var next = Data.Copy(); next.Coins -= 60; next.GalleryLighting = true; Commit(next); return true;
+        }
+        public bool EarnGalleryIncome()
+        {
+            int income = GalleryIncome; if (income == 0) return false;
+            var next = Data.Copy(); next.Coins = checked(next.Coins+income); Commit(next); return true;
         }
         public bool BuyTool(int tool)
         {

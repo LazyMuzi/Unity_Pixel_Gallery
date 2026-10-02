@@ -9,6 +9,7 @@ namespace PixelGallery
     {
         GameObject shop, toolPanel, npcBook, collectionGrid, palettePicker;
         TMP_Text shopWallet, shopMessage, gridStatus, bookText;
+        Button lightingButton;
         readonly TMP_Text[] toolPrices = new TMP_Text[3];
         readonly Button[] cards = new Button[6];
         readonly RawImage[] cardImages = new RawImage[6];
@@ -19,10 +20,6 @@ namespace PixelGallery
         Image currentColor;
         int ThemeIndex => ((session.Data.Day-1)/7)%3;
         string ThemeName => new[] { "푸른 계열", "따뜻한 색", "보랏빛" }[ThemeIndex];
-        byte PaletteIndex(int slot)
-        {
-            return (byte)(slot+1);
-        }
         double[] Analyze(byte[] pixels,int[] custom = null)
         {
             if (custom == null) custom = draftColors.ToArray();
@@ -43,8 +40,8 @@ namespace PixelGallery
         }
         void BuildGrowth()
         {
-            toolStatus.rectTransform.sizeDelta = new Vector2(300,50); toolStatus.rectTransform.anchoredPosition = new Vector2(-630,0);
-            Button(atelier.transform,"도구",.105f,260,90,-630,() => { surface.EndStroke(); toolPanel.SetActive(true); toolPanel.transform.SetAsLastSibling(); });
+            var moreButton = Button(drawingDock,"도구",.5f,108,88,248,() => { surface.EndStroke(); palettePicker.SetActive(false); toolPanel.SetActive(true); toolPanel.transform.SetAsLastSibling(); });
+            StyleDrawingButton(moreButton); toolBorders[2] = DrawingBorder(moreButton);
 
             var panel = Panel("Shop",safeRoot,new Color32(248,243,232,255)); Stretch(panel); shop = panel.gameObject;
             Label(panel,"상점",64,.94f,110); shopWallet = Label(panel,"",40,.875f,70);
@@ -54,41 +51,50 @@ namespace PixelGallery
             for (int i=0;i<3;i++)
             {
                 int flag = flags[i], cost = costs[i];
-                var button = Button(panel,names[i]+" · "+cost+"코인",.65f-i*.16f,920,110,0,() => BuyTool(flag,cost));
+                var button = Button(panel,names[i]+" · "+cost+"코인",.69f-i*.13f,920,100,0,() => BuyTool(flag,cost));
                 var name = button.GetComponentInChildren<TMP_Text>(); name.text = names[i];
                 name.rectTransform.anchorMax = new Vector2(.64f,1); name.rectTransform.offsetMin = name.rectTransform.offsetMax = Vector2.zero;
                 toolPrices[i] = Label(button.transform,"",36,.5f,100);
                 toolPrices[i].rectTransform.anchorMin = new Vector2(.64f,0); toolPrices[i].rectTransform.anchorMax = Vector2.one;
                 toolPrices[i].rectTransform.offsetMin = toolPrices[i].rectTransform.offsetMax = Vector2.zero;
             }
-            shopMessage = Label(panel,"",32,.22f,120);
+            lightingButton = Button(panel,"전시 조명 개선",.29f,920,110,0,BuyGalleryLighting).GetComponent<Button>();
+            shopMessage = Label(panel,"",28,.18f,85);
             Button(panel,"아틀리에로",.075f,440,90,-235,ReturnToAtelier);
             Button(panel,"관람객 도감",.075f,440,90,235,OpenNpcBook);
 
-            var tools = Panel("ConfirmTools",safeRoot,new Color32(248,243,232,255)); Stretch(tools); toolPanel = tools.gameObject;
-            Label(tools,"도구와 팔레트",64,.9f,110);
-            Button(tools,"큰 붓 선택",.73f,920,90,0,() => SelectTool(1,3));
-            Button(tools,"채우기 선택",.61f,920,90,0,() => SelectTool(2,4));
-            Button(tools,"대칭 켜기 / 끄기",.49f,920,90,0,() => SelectTool(4,0));
-            Button(tools,"스포이드",.37f,240,90,-560,() => { surface.EndStroke(); surface.Tool = 2; UpdateStatus(); toolPanel.SetActive(false); });
-            Button(tools,"축소",.37f,240,90,-280,() => surface.Zoom(1/1.25f));
-            Button(tools,"확대",.37f,240,90,0,() => surface.Zoom(1.25f));
-            Button(tools,"비우기",.37f,240,90,280,() => { toolPanel.SetActive(false); confirmation.SetActive(true); });
-            Label(tools,"두 손가락으로 확대·이동 · 잠긴 도구는 상점에서 구매",28,.29f,50);
-            Button(tools,"도구 닫기",.1f,920,90,0,() => toolPanel.SetActive(false));
+            var toolShade = Panel("ToolPopover",atelier.transform,Color.clear); Stretch(toolShade); toolPanel = toolShade.gameObject;
+            var dismissTools = Button(toolShade,"DismissTools",.5f,1,1,0,() => toolPanel.SetActive(false));
+            Stretch((RectTransform)dismissTools.transform); dismissTools.GetComponent<Image>().color = Color.clear;
+            dismissTools.GetComponentInChildren<TMP_Text>().text = "";
+            var tools = Place("ToolCard",toolShade,.5f,480,740,-650); tools.gameObject.AddComponent<Image>().color = new Color32(43,45,43,255);
+            Label(tools,"추가 도구",36,.925f,60).color = Color.white;
+            Button(tools,"큰 붓 선택",.8f,420,76,0,() => SelectTool(1,3));
+            Button(tools,"채우기 선택",.68f,420,76,0,() => SelectTool(2,4));
+            Button(tools,"대칭 켜기 / 끄기",.56f,420,76,0,() => SelectTool(4,0));
+            Button(tools,"스포이드",.44f,420,76,0,() => { surface.EndStroke(); surface.Tool = 2; UpdateStatus(); toolPanel.SetActive(false); });
+            Button(tools,"축소",.32f,200,76,-110,() => surface.Zoom(1/1.25f));
+            Button(tools,"확대",.32f,200,76,110,() => surface.Zoom(1.25f));
+            Button(tools,"격자 켜기 / 끄기",.2f,420,76,0,() => {
+                foreach (Transform child in surface.transform) if (child.name == "Grid") child.gameObject.SetActive(!child.gameObject.activeSelf);
+            });
+            Button(tools,"비우기",.08f,420,76,0,() => { toolPanel.SetActive(false); confirmation.SetActive(true); });
+            foreach (var button in tools.GetComponentsInChildren<Button>()) StyleDrawingButton(button.gameObject);
 
-            var picker = Panel("PalettePicker",safeRoot,new Color(0,0,0,.4f)); Stretch(picker); palettePicker = picker.gameObject;
-            var paletteCard = Place("PaletteCard",picker,.5f,540,900,-620); paletteCard.gameObject.AddComponent<Image>().color = new Color32(248,243,232,255);
-            Label(paletteCard,"색을 찍어 선택하세요",32,.94f,60).color = Color.white;
-            paletteCard.GetComponent<Image>().color = new Color32(57,57,57,255);
-            var sample = Place("SelectedColor",paletteCard,.82f,220,70); var sampleImage = sample.gameObject.AddComponent<Image>();
-            var wheelRect = Place("ColorWheel",paletteCard,.48f,500,500); wheelRect.gameObject.AddComponent<RawImage>();
+            var picker = Panel("PalettePicker",atelier.transform,Color.clear); Stretch(picker); palettePicker = picker.gameObject;
+            var dismissPalette = Button(picker,"DismissPalette",.5f,1,1,0,ApplyWheelColor);
+            Stretch((RectTransform)dismissPalette.transform); dismissPalette.GetComponent<Image>().color = Color.clear;
+            dismissPalette.GetComponentInChildren<TMP_Text>().text = "";
+            var paletteCard = Place("PaletteCard",picker,.51f,460,620,-650); paletteCard.gameObject.AddComponent<Image>().color = new Color32(43,45,43,255);
+            Label(paletteCard,"색상",30,.93f,50).color = Color.white;
+            var sample = Place("SelectedColor",paletteCard,.83f,180,50); var sampleImage = sample.gameObject.AddComponent<Image>();
+            var wheelRect = Place("ColorWheel",paletteCard,.47f,380,380); wheelRect.gameObject.AddComponent<RawImage>();
             colorWheel = wheelRect.gameObject.AddComponent<ColorWheelPicker>(); colorWheel.Initialize(sampleImage);
-            Button(paletteCard,"이 색 사용하기",.15f,440,80,0,ApplyWheelColor);
-            Button(paletteCard,"팔레트 닫기",.055f,440,60,0,() => palettePicker.SetActive(false));
-            var paletteButton = Button(atelier.transform,"팔레트",.415f,260,80,-630,() => { surface.EndStroke(); colorWheel.SetColor(palette[surface.SelectedColor]); palettePicker.SetActive(true); palettePicker.transform.SetAsLastSibling(); });
-            var chip = Place("CurrentColor",paletteButton.transform,.5f,60,40,80); currentColor = chip.gameObject.AddComponent<Image>(); currentColor.raycastTarget = false;
-            var paletteCaption = paletteButton.GetComponentInChildren<TMP_Text>(); paletteCaption.rectTransform.sizeDelta = new Vector2(-80,0); paletteCaption.rectTransform.anchoredPosition = new Vector2(-35,0);
+            var apply = Button(paletteCard,"이 색 사용하기",.075f,400,70,0,ApplyWheelColor);
+            apply.GetComponentInChildren<TMP_Text>().text = "선택"; StyleDrawingButton(apply);
+            var paletteButton = Button(drawingDock,"팔레트",.5f,108,88,0,() => { surface.EndStroke(); toolPanel.SetActive(false); colorWheel.SetColor(palette[surface.SelectedColor]); palettePicker.SetActive(true); palettePicker.transform.SetAsLastSibling(); });
+            StyleDrawingButton(paletteButton); paletteButton.GetComponentInChildren<TMP_Text>().text = "";
+            var chip = Place("CurrentColor",paletteButton.transform,.5f,52,52); currentColor = chip.gameObject.AddComponent<Image>(); currentColor.raycastTarget = false;
             palettePicker.SetActive(false);
 
             var book = Panel("NpcBook",safeRoot,new Color32(248,243,232,255)); Stretch(book); npcBook = book.gameObject;
@@ -135,6 +141,8 @@ namespace PixelGallery
         void RefreshShop()
         {
             shopWallet.text = "코인 "+session.Data.Coins;
+            lightingButton.interactable = session.Data.GalleryExpanded && !session.Data.GalleryLighting && session.Data.Coins >= 60;
+            lightingButton.GetComponentInChildren<TMP_Text>().text = session.Data.GalleryLighting ? "전시 조명 개선 완료 · 관람 수입 2배" : !session.Data.GalleryExpanded ? "전시 조명 개선 · 미술관 확장 후 해금" : "전시 조명 개선 · 60코인\n작품 조명 강화 · 관람 수입 2배";
             shopMessage.text = "코인이 부족하면 도구 가격이 빨간색으로 표시돼요.";
             int[] costs = { 150,200,300 }, flags = { 1,2,4 };
             for (int i=0;i<3;i++)
@@ -144,6 +152,12 @@ namespace PixelGallery
                 toolPrices[i].color = !owned && session.Data.Coins < costs[i] ? new Color32(170,42,40,255) : new Color32(40,43,51,255);
             }
         }
+        void BuyGalleryLighting()
+        {
+            bool bought = false; if (!TrySave(() => bought = session.BuyGalleryLighting())) return;
+            RefreshShop();
+            if (bought) { UpdateStudioGrowth(); shopMessage.text = "작품을 비추는 조명을 개선했어요. 관람 수입이 2배가 됩니다."; }
+        }
         void BuyTool(int flag,int cost)
         {
             bool bought = false; if (!TrySave(() => bought = session.BuyTool(flag))) return;
@@ -152,7 +166,7 @@ namespace PixelGallery
         void SelectTool(int flag,int tool)
         {
             if (session == null) return;
-            if ((session.Data.Tools&flag)==0) { OpenShop(); return; }
+            if ((session.Data.Tools&flag)==0) { status.text = "잠긴 도구예요 · 작업실 상점에서 구매할 수 있어요"; toolPanel.SetActive(false); return; }
             if (flag == 4) surface.Mirror = !surface.Mirror; else surface.Tool = tool;
             toolPanel.SetActive(false); UpdateStatus();
         }

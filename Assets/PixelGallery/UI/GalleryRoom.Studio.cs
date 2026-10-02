@@ -7,7 +7,7 @@ namespace PixelGallery
         public const float FocusSeconds = .8f;
         Transform easelCanvas, painter;
         Transform paintingArm;
-        Vector2 brushPoint;
+        Vector2 brushPoint, brushTarget;
         GameObject studio;
         Material draftMaterial;
         readonly Material[] studioArt = new Material[3];
@@ -50,7 +50,7 @@ namespace PixelGallery
             Shape("StudioPlantPot",studio.transform,PrimitiveType.Cube,new Vector3(-3,.4f,1.8f),new Vector3(.6f,.8f,.6f),wood);
             Shape("StudioPlant",studio.transform,PrimitiveType.Sphere,new Vector3(-3,1.3f,1.8f),new Vector3(.9f,1.6f,.9f),clothes[0]);
             var actor = CreateVisitor(0); painter = actor.Root; painter.name = "Painter"; painter.SetParent(studio.transform,false);
-            painter.localPosition = new Vector3(-1.3f,0,-.2f); painter.localRotation = Quaternion.Euler(0,90,0);
+            painter.localPosition = new Vector3(-1.65f,0,.15f); painter.localRotation = Quaternion.Euler(0,80,0);
             actor.Badge.gameObject.SetActive(false); actor.RightArm.gameObject.SetActive(false);
             paintingArm = new GameObject("PaintingArm").transform; paintingArm.SetParent(actor.Body,false);
             paintingArm.localPosition = new Vector3(.29f,1.2f,0);
@@ -118,7 +118,7 @@ namespace PixelGallery
         public void PaintGesture(Vector2 point)
         {
             if (!CanvasReady) return;
-            paintingTime = .5f; brushPoint = point;
+            paintingTime = .5f; brushTarget = point;
         }
         void Update()
         {
@@ -129,7 +129,8 @@ namespace PixelGallery
             roomCamera.transform.LookAt(transform.TransformPoint(Vector3.Lerp(lookFrom,lookTo,t)));
             roomCamera.orthographicSize = Mathf.Lerp(sizeFrom,sizeTo,t);
             paintingTime = Mathf.Max(0,paintingTime-Time.deltaTime); brushPhase += Time.deltaTime*12;
-            painter.localPosition = new Vector3(-1.3f,IsPainting ? Mathf.Sin(brushPhase)*.015f : 0,-.2f);
+            brushPoint = Vector2.Lerp(brushPoint,brushTarget,Mathf.Min(1,Time.deltaTime*10));
+            painter.localPosition = new Vector3(-1.65f+(IsPainting ? Mathf.Sin(brushPhase)*.012f : 0),IsPainting ? Mathf.Sin(brushPhase)*.01f : 0,.15f);
             var pose = IsPainting ? Quaternion.Euler(-15-brushPoint.y*25+Mathf.Sin(brushPhase)*8,(brushPoint.x-.5f)*20,0) : Quaternion.Euler(65,0,0);
             paintingArm.localRotation = Quaternion.Slerp(paintingArm.localRotation,pose,Mathf.Min(1,Time.deltaTime*12));
         }

@@ -222,12 +222,24 @@ namespace PixelGallery
             }
             var content = (RectTransform)resultText.transform.parent;
             content.anchoredPosition = Vector2.zero;
-            settlement.text = $"{artwork.Title} · {show.Day}일차\n좋아요 {likes} · 열성팬 {fans} · 가격 {show.Price}코인\n{judgment.Visitors[judgment.BuyerIndex].Name}의 제안: {show.Offer}코인";
-            text.AppendLine(show.GrowthBonus ? "확장된 미술관의 작품 가치 +20%가 반영됐어요." : show.Day >= 4 ? "확장 보너스는 다음 전시부터 적용돼요." : show.Day == 3 ? "판매하거나 보유하면 미술관이 확장돼요!\n다음 전시부터 작품 가치 +20%" : "미술관 확장까지 전시 "+(3-show.Day)+"회 남았어요.");
+            resultTitle.text = artwork.Title+" · "+show.Day+"일차";
+            resultStats.text = $"좋아요 {likes}명 · 열성팬 {fans}명\n작품 가치 {show.Price}코인";
+            resultOffer.text = judgment.Visitors[judgment.BuyerIndex].Name+"의 구매 제안\n"+show.Offer+"코인";
+            resultReward.text = show.CommissionReward > 0 ? $"부탁 완료 +{show.CommissionReward}코인 · 판매하거나 보유하면 지급" : session.Data.CommissionAccepted ? "단골의 부탁은 다음 새 그림으로 이어가요" : "보유하면 작업실에 걸어둘 수 있어요";
+            resultGrowth.text = show.GrowthBonus ? "확장된 미술관 · 작품 가치 +20% 적용" : show.Day >= 4 ? "확장 보너스는 다음 전시부터 적용돼요" : show.Day == 3 ? "정산하면 미술관 확장 · 다음 전시부터 작품 가치 +20%" : "미술관 확장까지 전시 "+(3-show.Day)+"회";
+            int first = Array.FindIndex(judgment.Visitors,v => v.Id == "warm#0" && v.Liked);
+            if (first < 0) first = judgment.BuyerIndex;
+            int second = Array.FindIndex(judgment.Visitors,v => !v.Liked);
+            if (second < 0) second = judgment.BuyerIndex == first ? (first+1)%judgment.Visitors.Length : judgment.BuyerIndex;
+            for (int i=0;i<featuredComments.Length;i++)
+            {
+                int index = i == 0 ? first : second;
+                var visitor = judgment.Visitors[index];
+                featuredComments[i].text = visitor.Name+" · "+reactions[(int)visitor.Reaction]+"\n"+show.Comments[index];
+            }
             resultText.text = text.ToString();
-            content.sizeDelta = new Vector2(-40,resultText.GetPreferredValues(resultText.text,880,0).y + 30);
-            if (show.CommissionReward > 0) settlement.text += "\n단골의 부탁 완료 · 판매/보유 시 +"+show.CommissionReward+"코인";
-            else if (session.Data.CommissionAccepted) settlement.text += "\n단골의 부탁은 다음 새 그림으로 이어가요";
+            content.sizeDelta = new Vector2(-40,resultText.GetPreferredValues(resultText.text,1060,0).y+30);
+            allComments.SetActive(false);
             gallery.SetActive(false); atelier.SetActive(false); collection.SetActive(false); results.SetActive(true);
         }
         void AskSale(string id)
@@ -236,6 +248,7 @@ namespace PixelGallery
             var show = id == null ? session.Data.Pending : session.Data.Collection.Find(a => a.Id == id)?.LastShow;
             if (show == null || !show.Finished) return;
             saleId = id; saleText.text = $"{show.Offer}코인에 판매할까요?\n그림은 컬렉션에서 사라집니다.\n판매는 되돌릴 수 없어요.";
+            if (id == null && show.CommissionReward > 0) saleText.text += $"\n부탁 보상 +{show.CommissionReward} · 총 {show.Offer+show.CommissionReward}코인";
             saleConfirmation.SetActive(true); saleConfirmation.transform.SetAsLastSibling();
         }
         public void SellArtwork()
@@ -243,14 +256,18 @@ namespace PixelGallery
             if (!saleConfirmation.activeSelf) return;
             var show = saleId == null ? session.Data.Pending : session.Data.Collection.Find(a => a.Id == saleId)?.LastShow;
             if (show == null) return;
-            int coins = show.Offer;
+            int coins = show.Offer+(saleId == null ? show.CommissionReward : 0);
+            int previousCoins = session.Data.Coins; bool wasExpanded = session.Data.GalleryExpanded;
             if (!TrySave(() => { if (saleId == null) session.Resolve(true); else session.SellStored(saleId); })) return;
             saleConfirmation.SetActive(false); ReturnToAtelier(); status.text = $"판매 완료\n+{coins}코인";
+            ShowSettlementReward(previousCoins,!wasExpanded && session.Data.GalleryExpanded,true);
         }
         public void KeepArtwork()
         {
             if (session == null || session.Data.Pending == null || !session.Data.Pending.Finished) return;
-            if (TrySave(() => session.Resolve(false))) ReturnToAtelier();
+            int previousCoins = session.Data.Coins; bool wasExpanded = session.Data.GalleryExpanded;
+            if (!TrySave(() => session.Resolve(false))) return;
+            ReturnToAtelier(); ShowSettlementReward(previousCoins,!wasExpanded && session.Data.GalleryExpanded,false);
         }
         void ReturnToAtelier()
         {
@@ -276,7 +293,8 @@ namespace PixelGallery
             MakePreview(a.Pixels,a.CustomColors); collectionImage.texture = preview;
             collectionText.text = $"{collectionIndex+1}/{session.Data.Collection.Count} · {a.Title}\n전시 {a.TimesShown}회 · 제안 {a.LastShow.Offer}코인";
             int slot = Array.IndexOf(session.Data.GalleryWallIds,a.Id);
-            if (slot >= 0) collectionText.text += "\n전시장 배치: "+new[] { "왼쪽 벽", "오른쪽 벽", "옆 벽" }[slot];
+            if (slot >= 0) collectionText.text += "\n전시장 배치: "+new[] { "왼쪽 벽", "오른쪽 벽", "옆 벽" }[slot]+" · 관람 수입 "+(session.Data.GalleryLighting ? 2 : 1)+"코인 / 20초";
+            else if (session.Data.GalleryExpanded) collectionText.text += "\n전시장에 걸면 관람 수입이 쌓여요";
         }
         void BeginGalleryPlacement()
         {

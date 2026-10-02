@@ -27,10 +27,12 @@ namespace PixelGallery
         GameObject atelier, results, confirmation;
         Drawing drawing;
         DrawingSurface surface;
-        TMP_Text status, toolStatus, resultText;
+        TMP_Text status, resultText, resultTitle, resultStats, resultOffer, resultReward, resultGrowth;
+        readonly TMP_Text[] featuredComments = new TMP_Text[2];
+        GameObject allComments;
         TMP_InputField title;
-        UnityEngine.UI.Image[] swatches;
-        UnityEngine.UI.Outline[] colorBorders;
+        RectTransform drawingDock;
+        readonly UnityEngine.UI.Outline[] toolBorders = new UnityEngine.UI.Outline[3];
         string artworkId;
         Judgment judgment;
         double[] analyzedFeatures;
@@ -92,10 +94,10 @@ namespace PixelGallery
             title.textViewport = inputText.rectTransform; title.textComponent = inputText;
             title.characterLimit = 40; title.text = "나의 첫 그림";
             title.onEndEdit.AddListener(_ => SaveDraft());
-            var viewport = Place("DrawingViewport", panel, 0.5f, 680, 680, 270);
+            var viewport = Place("DrawingViewport", panel, 0.57f, 780, 780);
             viewport.gameObject.AddComponent<UnityEngine.UI.Image>().color = Color.clear;
             viewport.gameObject.AddComponent<UnityEngine.UI.RectMask2D>();
-            var imageRect = Place("DrawingSurface", viewport, 0.5f, 680, 680);
+            var imageRect = Place("DrawingSurface", viewport, 0.5f, 780, 780);
             imageRect.gameObject.AddComponent<UnityEngine.UI.RawImage>();
             surface = imageRect.gameObject.AddComponent<DrawingSurface>(); surface.Initialize(drawing, palette);
             surface.Changed = DraftChanged;
@@ -104,17 +106,22 @@ namespace PixelGallery
             {
                 var line = Panel("Grid", imageRect, new Color(0.15f,0.12f,0.1f,0.13f));
                 line.anchorMin = new Vector2((float)i / PixelGallery.Drawing.Size, 0); line.anchorMax = new Vector2((float)i / PixelGallery.Drawing.Size, 1);
+                line.gameObject.SetActive(false);
                 line.sizeDelta = new Vector2(1, 0); line.anchoredPosition = Vector2.zero;
                 var horizontal = Panel("Grid", imageRect, new Color(0.15f,0.12f,0.1f,0.13f));
                 horizontal.anchorMin = new Vector2(0, (float)i / PixelGallery.Drawing.Size); horizontal.anchorMax = new Vector2(1, (float)i / PixelGallery.Drawing.Size);
+                horizontal.gameObject.SetActive(false);
                 horizontal.sizeDelta = new Vector2(0, 1); horizontal.anchoredPosition = Vector2.zero;
             }
-            toolStatus = Label(panel, "", 28, 0.75f, 50);
+            drawingDock = Panel("DrawingDock",panel,new Color32(43,45,43,245));
+            drawingDock.anchorMin = drawingDock.anchorMax = new Vector2(.5f,0);
+            drawingDock.sizeDelta = new Vector2(640,116); drawingDock.anchoredPosition = new Vector2(0,82);
             string[] tools = { "연필", "지우개", "되돌리기" };
+            int[] positions = { -248,-124,124 };
             for (int i = 0; i < 3; i++)
             {
                 int tool = i;
-                Button(panel, tools[i], 0.65f-i*.105f, 260, 90, -630, () => {
+                var button = Button(drawingDock, tools[i], .5f, 108, 88, positions[i], () => {
                     surface.EndStroke();
                     if (tool == 2)
                     {
@@ -123,47 +130,87 @@ namespace PixelGallery
                     else surface.Tool = tool;
                     UpdateStatus();
                 });
+                StyleDrawingButton(button);
+                if (tool < 2) toolBorders[tool] = DrawingBorder(button);
             }
-            swatches = new UnityEngine.UI.Image[8];
-            colorBorders = new UnityEngine.UI.Outline[8];
-            for (int i = 0; i < 8; i++)
-            {
-                int slot = i; byte color = (byte)(i + 1);
-                var button = Button(panel, "", i < 4 ? 0.315f : 0.215f, 100, 90, -800+(i%4)*115, () => { surface.EndStroke(); surface.SelectedColor = PaletteIndex(slot); surface.Tool = 0; UpdateStatus(); });
-                button.GetComponent<UnityEngine.UI.Image>().color = palette[color];
-                var swatchButton = button.GetComponent<UnityEngine.UI.Button>();
-                var tint = swatchButton.colors; tint.selectedColor = tint.highlightedColor = Color.white; tint.pressedColor = new Color(.9f,.9f,.9f,1); swatchButton.colors = tint;
-                swatches[i] = button.GetComponent<UnityEngine.UI.Image>();
-                var border = button.AddComponent<UnityEngine.UI.Outline>();
-                colorBorders[i] = border;
-                border.effectColor = new Color32(33,84,61,255); border.effectDistance = new Vector2(5,-5);
-            }
-            status = Label(panel, "", 28, 0.13f, 50); status.rectTransform.sizeDelta = new Vector2(500,50); status.rectTransform.anchoredPosition = new Vector2(270,0);
-            Button(panel, "완성하고 전시하기", 0.94f, 300, 90, 270, Evaluate);
+            status = Label(panel, "", 28, .18f, 50); status.color = Color.white;
+            var complete = Button(panel, "완료", .945f, 180, 80, 0, Evaluate);
+            var completeRect = (RectTransform)complete.transform;
+            completeRect.anchorMin = completeRect.anchorMax = new Vector2(1,.945f);
+            completeRect.anchoredPosition = new Vector2(-120,0);
+            complete.GetComponent<UnityEngine.UI.Image>().color = new Color32(213,181,124,255);
+        }
+        void StyleDrawingButton(GameObject button)
+        {
+            button.GetComponent<UnityEngine.UI.Image>().color = new Color32(61,65,61,255);
+            var label = button.GetComponentInChildren<TMP_Text>(); label.color = Color.white; label.fontSize = 26;
+            var control = button.GetComponent<UnityEngine.UI.Button>();
+            var colors = control.colors; colors.normalColor = Color.white;
+            colors.highlightedColor = colors.selectedColor = new Color32(225,231,221,255);
+            colors.pressedColor = new Color32(190,201,179,255); control.colors = colors;
+        }
+        UnityEngine.UI.Outline DrawingBorder(GameObject button)
+        {
+            var border = button.AddComponent<UnityEngine.UI.Outline>();
+            border.effectColor = new Color32(224,187,120,255); border.effectDistance = new Vector2(3,-3); return border;
 
+        }
+        TMP_Text ResultLabel(Transform parent, string value, float size, float y, float height, float width, float x = 0)
+        {
+            var label = Label(parent,value,size,y,height);
+            label.rectTransform.sizeDelta = new Vector2(width,height);
+            label.rectTransform.anchoredPosition = new Vector2(x,0);
+            label.color = new Color32(241,230,209,255);
+            return label;
         }
         void BuildResults()
         {
-            var panel = Panel("Results", safeRoot, Color.clear); Stretch(panel); results = panel.gameObject;
-            Label(panel, "관람객의 반응", 64, 0.94f, 110);
-            var image = Place("Artwork", panel, 0.55f, 400, 400, -580);
+            var panel = Panel("Results",safeRoot,new Color32(27,25,23,255)); Stretch(panel); results = panel.gameObject;
+            ResultLabel(panel,"오늘의 전시",42,.94f,65,1500);
+            var frame = Panel("ArtworkFrame",panel,new Color32(171,125,68,255));
+            frame.anchorMin = frame.anchorMax = new Vector2(.5f,.57f);
+            frame.sizeDelta = new Vector2(584,584); frame.anchoredPosition = new Vector2(-480,0);
+            var image = Place("Artwork",frame,.5f,560,560); Stretch(image,12);
             previewImage = image.gameObject.AddComponent<UnityEngine.UI.RawImage>(); previewImage.raycastTarget = false;
-            var scrollRect = Place("VisitorScroll", panel, .5f, 1000, 670, 280);
+            resultTitle = ResultLabel(panel,"",36,.245f,55,650,-480);
+            resultStats = ResultLabel(panel,"",28,.19f,90,680,-480);
+            var side = Panel("ResultDetails",panel,new Color32(43,43,36,255));
+            side.anchorMin = side.anchorMax = new Vector2(.5f,.52f);
+            side.sizeDelta = new Vector2(760,780); side.anchoredPosition = new Vector2(390,0);
+            ResultLabel(side,"그림 앞에 남긴 이야기",34,.93f,55,690);
+            for (int i=0;i<2;i++)
+            {
+                var card = Panel("FeaturedComment"+i,side,new Color32(55,54,46,255));
+                card.anchorMin = card.anchorMax = new Vector2(.5f,.76f-i*.21f); card.sizeDelta = new Vector2(690,150);
+                featuredComments[i] = ResultLabel(card,"",28,.5f,130,650);
+                featuredComments[i].alignment = TextAlignmentOptions.MidlineLeft;
+                featuredComments[i].enableAutoSizing = true; featuredComments[i].fontSizeMin = 24; featuredComments[i].fontSizeMax = 28;
+            }
+            var more = Button(side,"전체 감상 보기",.395f,690,65,0,() => { allComments.SetActive(true); allComments.transform.SetAsLastSibling(); });
+            StyleDrawingButton(more);
+            resultOffer = ResultLabel(side,"",36,.27f,110,690);
+            resultReward = ResultLabel(side,"",24,.16f,65,690);
+            var keep = Button(side,"보유하기",.065f,320,80,-180,KeepArtwork); StyleDrawingButton(keep);
+            var sell = Button(side,"판매하기",.065f,320,80,180,() => AskSale(null));
+            sell.GetComponent<UnityEngine.UI.Image>().color = new Color32(213,174,109,255);
+            sell.GetComponentInChildren<TMP_Text>().color = new Color32(34,29,22,255);
+            resultGrowth = ResultLabel(panel,"",26,.06f,85,1580);
+            var shade = Panel("ConfirmComments",panel,new Color(0,0,0,.88f)); Stretch(shade); allComments = shade.gameObject;
+            ResultLabel(shade,"전체 관람객 감상",42,.91f,80,1100);
+            var scrollRect = Place("VisitorScroll",shade,.5f,1100,690);
             var scroll = scrollRect.gameObject.AddComponent<UnityEngine.UI.ScrollRect>();
-            var viewport = Panel("Viewport", scrollRect, new Color(1,1,1,.4f)); Stretch(viewport);
+            var viewport = Panel("Viewport",scrollRect,new Color32(43,43,36,255)); Stretch(viewport);
             viewport.GetComponent<UnityEngine.UI.Image>().raycastTarget = true;
             viewport.gameObject.AddComponent<UnityEngine.UI.RectMask2D>();
-            var content = Place("Content", viewport, 1, 880, 2000);
+            var content = Place("Content",viewport,1,1060,2000);
             content.anchorMin = new Vector2(0,1); content.anchorMax = Vector2.one;
             content.pivot = new Vector2(.5f,1); content.sizeDelta = new Vector2(-40,2000);
-            resultText = Label(content, "", 40, .5f, 2000); Stretch(resultText.rectTransform);
+            resultText = ResultLabel(content,"",32,.5f,2000,1060); Stretch(resultText.rectTransform);
             resultText.alignment = TextAlignmentOptions.TopLeft;
             scroll.viewport = viewport; scroll.content = content; scroll.horizontal = false;
             scroll.movementType = UnityEngine.UI.ScrollRect.MovementType.Clamped;
-            var hint = Label(panel, "감상 목록 · 위아래로 스크롤", 30, .84f, 50); hint.rectTransform.anchoredPosition = new Vector2(280,0);
-            settlement = Label(panel, "", 32, .245f, 190); settlement.rectTransform.sizeDelta = new Vector2(560,190); settlement.rectTransform.anchoredPosition = new Vector2(-580,0);
-            Button(panel, "판매하기", .07f, 440, 90, -235, () => AskSale(null));
-            Button(panel, "보유하기", .07f, 440, 90, 235, KeepArtwork);
+            var close = Button(shade,"감상 닫기",.09f,360,80,0,() => allComments.SetActive(false)); StyleDrawingButton(close);
+            allComments.SetActive(false);
         }
         void BuildConfirmation()
         {
@@ -212,17 +259,11 @@ namespace PixelGallery
         }
         void UpdateStatus()
         {
-            if (toolStatus == null || swatches == null) return;
+            if (surface == null) return;
             if (currentColor != null) currentColor.color = palette[surface.SelectedColor];
-            toolStatus.text = new[] { "연필", "지우개", "스포이드", "큰 붓", "채우기" }[surface.Tool] + (surface.Mirror ? " · 대칭" : "");
-            for (int i = 0; i < swatches.Length; i++)
-            {
-                byte color = PaletteIndex(i);
-                swatches[i].gameObject.SetActive(color != 0); swatches[i].color = palette[color];
-                colorBorders[i].enabled = surface.SelectedColor == color;
-            }
-            int count = 0; foreach (byte p in drawing.Pixels) if (p != 0) count++;
-            if (status != null) status.text = count == 0 ? "색을 골라 자유롭게 그려보세요" : "";
+            for (int i=0;i<toolBorders.Length;i++)
+                if (toolBorders[i] != null) toolBorders[i].enabled = i < 2 ? surface.Tool == i : surface.Tool > 1 || surface.Mirror;
+            if (status != null) status.text = "";
         }
         RectTransform Panel(string name, Transform parent, Color color)
         {
